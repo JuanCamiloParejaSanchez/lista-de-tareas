@@ -1,5 +1,6 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useTasks, TasksProvider } from './useTasks';
+import { NotificationProvider } from '../contexts/NotificationContext';
 
 // Mock de fetch
 global.fetch = jest.fn();
@@ -12,7 +13,9 @@ describe('useTasks', () => {
   });
 
   const wrapper = ({ children }: { children: React.ReactNode }) => (
-    <TasksProvider>{children}</TasksProvider>
+    <NotificationProvider>
+      <TasksProvider>{children}</TasksProvider>
+    </NotificationProvider>
   );
 
   test('carga tareas al inicializar', async () => {
