@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useReducer, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode, useEffect } from 'react';
 import { Task, CreateTaskInput, UpdateTaskInput } from '../types/task';
 
 interface TasksState {
@@ -11,8 +11,8 @@ interface TasksState {
 
 type TasksAction =
   | { type: 'ADD_TASK'; payload: Task }
-  | { type: 'UPDATE_TASK'; payload: { id: string; updates: UpdateTaskInput } }
-  | { type: 'DELETE_TASK'; payload: string }
+  | { type: 'UPDATE_TASK'; payload: { id: number; updates: UpdateTaskInput } }
+  | { type: 'DELETE_TASK'; payload: number }
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SET_ERROR'; payload: string | null }
   | { type: 'LOAD_TASKS'; payload: Task[] };
@@ -36,7 +36,7 @@ function tasksReducer(state: TasksState, action: TasksAction): TasksState {
         ...state,
         tasks: state.tasks.map(task =>
           task.id === action.payload.id
-            ? { ...task, ...action.payload.updates, updatedAt: new Date() }
+            ? { ...task, ...action.payload.updates }
             : task
         ),
         error: null,
@@ -70,66 +70,98 @@ function tasksReducer(state: TasksState, action: TasksAction): TasksState {
 
 interface TasksContextType {
   state: TasksState;
-  addTask: (input: CreateTaskInput) => void;
-  updateTask: (id: string, updates: UpdateTaskInput) => void;
-  deleteTask: (id: string) => void;
-  toggleTask: (id: string) => void;
+  addTask: (input: CreateTaskInput) => Promise<void>;
+  deleteTask: (id: number) => Promise<void>;
+  completeTask: (id: number) => Promise<void>;
   getSortedTasks: () => Task[];
+  reloadTasks: () => Promise<void>;
 }
 
 const TasksContext = createContext<TasksContextType | undefined>(undefined);
 
-function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
-}
-
 export function TasksProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(tasksReducer, initialState);
 
-  const addTask = (input: CreateTaskInput) => {
+  // Cargar tareas al iniciar
+  useEffect(() => {
+    reloadTasks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const reloadTasks = async () => {
+    dispatch({ type: 'SET_LOADING', payload: true });
+    try {
+      const res = await fetch('/api/tasks');
+      const data = await res.json();
+      dispatch({ type: 'LOAD_TASKS', payload: data });
+    } catch (error) {
+      dispatch({ type: 'SET_ERROR', payload: 'Error al cargar las tareas' });
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
+    }
+  };
+
+  const addTask = async (input: CreateTaskInput) => {
     if (!input.title.trim()) {
       dispatch({ type: 'SET_ERROR', payload: 'El título de la tarea no puede estar vacío' });
       return;
     }
-
     if (input.title.length < 3) {
       dispatch({ type: 'SET_ERROR', payload: 'El título debe tener al menos 3 caracteres' });
       return;
     }
-
-    const newTask: Task = {
-      id: generateId(),
-      title: input.title.trim(),
-      completed: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    dispatch({ type: 'ADD_TASK', payload: newTask });
-  };
-
-  const updateTask = (id: string, updates: UpdateTaskInput) => {
-    if (updates.title !== undefined && !updates.title.trim()) {
-      dispatch({ type: 'SET_ERROR', payload: 'El título de la tarea no puede estar vacío' });
-      return;
+    dispatch({ type: 'SET_LOADING', payload: true });
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: input.title }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Error al crear la tarea');
+      }
+      const newTask = await res.json();
+      dispatch({ type: 'ADD_TASK', payload: newTask });
+    } catch (error: any) {
+      dispatch({ type: 'SET_ERROR', payload: error.message });
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
+  };
 
-    if (updates.title !== undefined && updates.title.length < 3) {
-      dispatch({ type: 'SET_ERROR', payload: 'El título debe tener al menos 3 caracteres' });
-      return;
+  const deleteTask = async (id: number) => {
+    dispatch({ type: 'SET_LOADING', payload: true });
+    try {
+      const res = await fetch(`/api/tasks/${id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        throw new Error('Error al eliminar la tarea');
+      }
+      dispatch({ type: 'DELETE_TASK', payload: id });
+    } catch (error: any) {
+      dispatch({ type: 'SET_ERROR', payload: error.message });
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
-
-    dispatch({ type: 'UPDATE_TASK', payload: { id, updates } });
   };
 
-  const deleteTask = (id: string) => {
-    dispatch({ type: 'DELETE_TASK', payload: id });
-  };
-
-  const toggleTask = (id: string) => {
-    const task = state.tasks.find(t => t.id === id);
-    if (task) {
-      updateTask(id, { completed: !task.completed });
+  const completeTask = async (id: number) => {
+    dispatch({ type: 'SET_LOADING', payload: true });
+    try {
+      const res = await fetch(`/api/tasks/${id}`, {
+        method: 'PATCH',
+      });
+      if (!res.ok) {
+        throw new Error('Error al completar la tarea');
+      }
+      const updatedTask = await res.json();
+      dispatch({ type: 'UPDATE_TASK', payload: { id, updates: { completed: true } } });
+    } catch (error: any) {
+      dispatch({ type: 'SET_ERROR', payload: error.message });
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
   };
 
@@ -145,10 +177,10 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   const value: TasksContextType = {
     state,
     addTask,
-    updateTask,
     deleteTask,
-    toggleTask,
+    completeTask,
     getSortedTasks,
+    reloadTasks,
   };
 
   return React.createElement(TasksContext.Provider, { value }, children);
