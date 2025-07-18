@@ -9,13 +9,14 @@ interface TaskItemProps {
 }
 
 export default function TaskItem({ task }: TaskItemProps) {
-  const { updateTask, deleteTask, toggleTask } = useTasks();
+  const { completeTask, deleteTask } = useTasks();
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
 
   const handleEdit = () => {
     if (editTitle.trim() && editTitle !== task.title) {
-      updateTask(task.id, { title: editTitle });
+      // Por ahora solo permitimos completar tareas, no editar títulos
+      // TODO: Implementar actualización de títulos
     }
     setIsEditing(false);
   };
@@ -33,14 +34,26 @@ export default function TaskItem({ task }: TaskItemProps) {
     }
   };
 
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('es-ES', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(new Date(date));
+  const formatDate = (date: Date | string) => {
+    try {
+      const dateObj = typeof date === 'string' ? new Date(date) : date;
+      
+      // Verificar si la fecha es válida
+      if (isNaN(dateObj.getTime())) {
+        return 'Fecha inválida';
+      }
+      
+      return new Intl.DateTimeFormat('es-ES', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(dateObj);
+    } catch (error) {
+      console.error('Error al formatear fecha:', error);
+      return 'Fecha inválida';
+    }
   };
 
   return (
@@ -51,7 +64,7 @@ export default function TaskItem({ task }: TaskItemProps) {
     }`}>
       {/* Checkbox para marcar como completada */}
       <button
-        onClick={() => toggleTask(task.id)}
+        onClick={() => completeTask(task.id)}
         className={`flex-shrink-0 w-5 h-5 rounded border-2 transition-colors ${
           task.completed
             ? 'bg-green-500 border-green-500 text-white'
