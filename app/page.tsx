@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { TasksProvider, useTasks } from '@/hooks/useTasks';
-import TaskItem from '@/components/TaskItem';
+import { TasksProvider, useTasks } from '../hooks/useTasks';
+import TaskItem from '../components/TaskItem';
 
 function TodoApp() {
   const { state, addTask, getSortedTasks } = useTasks();

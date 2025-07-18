@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Task } from '@/types/task';
-import { useTasks } from '@/hooks/useTasks';
+import { Task } from '../types/task';
+import { useTasks } from '../hooks/useTasks';
 
 interface TaskItemProps {
   task: Task;
