@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useReducer, ReactNode, useEffect } from 'react';
 import { Task, CreateTaskInput, UpdateTaskInput } from '../types/task';
+import { useNotificationContext } from '../contexts/NotificationContext';
 
 interface TasksState {
   tasks: Task[];
@@ -71,6 +72,7 @@ function tasksReducer(state: TasksState, action: TasksAction): TasksState {
 interface TasksContextType {
   state: TasksState;
   addTask: (input: CreateTaskInput) => Promise<void>;
+  updateTask: (id: number, updates: UpdateTaskInput) => Promise<void>;
   deleteTask: (id: number) => Promise<void>;
   completeTask: (id: number) => Promise<void>;
   getSortedTasks: () => Task[];
@@ -81,6 +83,7 @@ const TasksContext = createContext<TasksContextType | undefined>(undefined);
 
 export function TasksProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(tasksReducer, initialState);
+  const { addNotification } = useNotificationContext();
 
   // Cargar tareas al iniciar
   useEffect(() => {
@@ -94,8 +97,13 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       const res = await fetch('/api/tasks');
       const data = await res.json();
       dispatch({ type: 'LOAD_TASKS', payload: data });
+      if (data.length > 0) {
+        addNotification(`${data.length} tareas cargadas`, 'info', 2000);
+      }
     } catch (error) {
-      dispatch({ type: 'SET_ERROR', payload: 'Error al cargar las tareas' });
+      const errorMessage = 'Error al cargar las tareas';
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
+      addNotification(errorMessage, 'error');
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
@@ -103,13 +111,18 @@ export function TasksProvider({ children }: { children: ReactNode }) {
 
   const addTask = async (input: CreateTaskInput) => {
     if (!input.title.trim()) {
-      dispatch({ type: 'SET_ERROR', payload: 'El título de la tarea no puede estar vacío' });
+      const errorMessage = 'El título de la tarea no puede estar vacío';
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
+      addNotification(errorMessage, 'warning');
       return;
     }
     if (input.title.length < 3) {
-      dispatch({ type: 'SET_ERROR', payload: 'El título debe tener al menos 3 caracteres' });
+      const errorMessage = 'El título debe tener al menos 3 caracteres';
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
+      addNotification(errorMessage, 'warning');
       return;
     }
+    
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
       const res = await fetch('/api/tasks', {
@@ -123,14 +136,43 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       }
       const newTask = await res.json();
       dispatch({ type: 'ADD_TASK', payload: newTask });
+      addNotification(`Tarea "${input.title}" creada exitosamente`, 'success');
     } catch (error: any) {
       dispatch({ type: 'SET_ERROR', payload: error.message });
+      addNotification(error.message, 'error');
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
+    }
+  };
+
+  const updateTask = async (id: number, updates: UpdateTaskInput) => {
+    const taskToUpdate = state.tasks.find(task => task.id === id);
+    dispatch({ type: 'SET_LOADING', payload: true });
+    try {
+      const res = await fetch(`/api/tasks/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Error al actualizar la tarea');
+      }
+      const updatedTask = await res.json();
+      dispatch({ type: 'UPDATE_TASK', payload: { id, updates } });
+      if (taskToUpdate) {
+        addNotification(`Tarea "${taskToUpdate.title}" actualizada exitosamente`, 'success');
+      }
+    } catch (error: any) {
+      dispatch({ type: 'SET_ERROR', payload: error.message });
+      addNotification(error.message, 'error');
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
   };
 
   const deleteTask = async (id: number) => {
+    const taskToDelete = state.tasks.find(task => task.id === id);
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
       const res = await fetch(`/api/tasks/${id}`, {
@@ -140,14 +182,19 @@ export function TasksProvider({ children }: { children: ReactNode }) {
         throw new Error('Error al eliminar la tarea');
       }
       dispatch({ type: 'DELETE_TASK', payload: id });
+      if (taskToDelete) {
+        addNotification(`Tarea "${taskToDelete.title}" eliminada`, 'success');
+      }
     } catch (error: any) {
       dispatch({ type: 'SET_ERROR', payload: error.message });
+      addNotification(error.message, 'error');
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
   };
 
   const completeTask = async (id: number) => {
+    const taskToComplete = state.tasks.find(task => task.id === id);
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
       const res = await fetch(`/api/tasks/${id}`, {
@@ -158,8 +205,12 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       }
       const updatedTask = await res.json();
       dispatch({ type: 'UPDATE_TASK', payload: { id, updates: { completed: true } } });
+      if (taskToComplete) {
+        addNotification(`¡Tarea "${taskToComplete.title}" completada!`, 'success');
+      }
     } catch (error: any) {
       dispatch({ type: 'SET_ERROR', payload: error.message });
+      addNotification(error.message, 'error');
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
@@ -177,6 +228,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   const value: TasksContextType = {
     state,
     addTask,
+    updateTask,
     deleteTask,
     completeTask,
     getSortedTasks,
